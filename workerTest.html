@@ -1,0 +1,33 @@
+<html>
+<head>
+	<title>Worker Test</title>
+</head>
+
+<script>
+var out;
+var w;
+function start(){
+	out = document.getElementById("out");
+	if(typeof(Worker) !== "undefined"){
+		if(typeof(w) == "undefined"){
+			w = new Worker("workerTest.js");
+			w.postMessage(5);
+		}
+		w.onmessage = function(event){
+			out.innerHTML = event.data;
+		}
+	}else{
+		out.innerHTML = "No support";
+	}
+	out.innerHTML = "a output";
+}
+
+</script>
+
+<body>
+	<h1>Heading</h1>
+	<span id="out">Nothing Yet</span>
+	<button onclick="start();">Start</button>
+	
+</body>
+</html>

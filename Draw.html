@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Darw</title>
+
+<style>
+input[type="range"]{
+	display: inline-block;
+	width: 300px;
+}
+
+input[type="text"]{
+	display: inline-block;
+	width: 50px;
+}
+
+canvas{
+	display: inline;
+}
+
+input[type="button"]{
+	display: inline-block;
+}
+
+#upButton, #downButton{
+	width: 640px;
+	height: 20px;
+}
+
+#leftButton, #rightButton{
+	width: 20px;
+	height: 480px; 
+}
+
+#progressBar{
+	width: 320px;
+}
+
+th{
+	text-align: right;
+}
+</style>
+
+<script>
+
+var dim = {l: -10.0, r: 10.0, b: -10.0, t: 10.0 };//{l: -2.0, r: 1.0, b: -1.25, t: 1.25 };
+
+var M;
+var bSq;
+var exponent;
+var p1;
+
+var can, ctx, img, w, h;
+function Load(){
+	
+	exponent = {re:(Number(document.getElementById("in").value)),
+		im:(Number(document.getElementById("inIm").value))};
+	M = Number(document.getElementById("numItInput").value);
+	bSq = Number(document.getElementById("numBSqInput").value);
+	p1 = Number(document.getElementById("param1").value);
+	
+	can = document.getElementById("can");
+	ctx = can.getContext("2d");
+	w = can.width, h = can.height;
+	img = ctx.createImageData(w, h);
+	img = ctx.createImageData(w, h);
+	
+	initProgCan();
+	
+	draw({re:2, im:0});
+	
+	//setProgressBar([0.5, 0.3, 0.7, 0.9, 0.1]);
+}
+
+var numTh = 4;
+var workers = [];
+var progresses = [];
+
+var StartDate;
+
+function workerMsg(e){
+	if(e.data.msg == 2){
+		progresses[e.data.id+1] = e.data.data;
+		var l = progresses.length;
+		var sum = 0.0;
+		for(var i = 1; i < l; i++)
+			sum += progresses[i];
+		progresses[0] = sum/(l-1);
+		setProgressBar(progresses);
+	}else if(e.data.msg == 1){
+		
+		workers[e.data.id].w.terminate();
+		
+		img.data.set(e.data.data, workers[e.data.id].startAt);
+		
+		UpDate();
+		
+		workers[e.data.id].done = true;
+		
+		var allDone = true;
+		for(var i = 0; i<numTh; i++)
+			allDone = allDone && workers[i].done;
+		if(allDone){			
+			UpDate();
+			document.getElementById("timeOutput").innerHTML = ((new Date())-StartDate)+"ms";
+		}
+	}else if(e.data.msg == 3){
+		alert(e.data.data);
+	}
+}
+
+function draw(){
+	
+	StartDate = new Date();
+
+	numByPTh = 4*Math.floor((img.data.length/4)/numTh);
+	progresses[0] = 0.0;
+	for(var i = 0; i<numTh; i++){
+		workers[i] = {w:(new Worker("dataCalc.js")), 
+				done:false, startAt:(i*numByPTh), endAt:((i+1)*numByPTh)};
+		progresses[i+1] = 0.0;
+		workers[i].w.addEventListener("message", workerMsg, false);
+		//workers[i].w.onmessage = workerMsg;
+		workers[i].w.postMessage({
+				M:M, bSq:bSq, w:w, h:h, dim:dim, exponent:exponent,
+				startAt:workers[i].startAt, endAt:workers[i].endAt, id:i, p1:p1
+			});
+	}
+}
+
+var dragging = false;
+var box = {x1:0.0, y1:0.0, x2:0.0, y2:0.0}
+
+function UpDate(){
+	if(!dragging){
+		ctx.putImageData(img, 0, 0);
+		return;
+	}
+	var outImg = ctx.createImageData(img.width, img.height);
+	outImg.data.set(img.data);
+	
+	var xbool = box.x2 >= box.x1;
+	var xInit = xbool ? box.x1 : box.x2;
+	var xEnd = xbool ? box.x2 : box.x1;
+	
+	var ybool = box.y2 >= box.y1;
+	var yInit = ybool ? box.y1 : box.y2;
+	var yEnd = ybool ? box.y2 : box.y1;
+	
+	var i = (yInit*w+xInit)*4;
+	var j = (yEnd*w+xInit)*4;
+	for(var x = xInit; x <= xEnd; x++){
+		outImg.data[i] = 0;
+		outImg.data[i+1] = 255;
+		outImg.data[i+2] = 0;
+		outImg.data[i+3] = 255;
+		
+		outImg.data[j] = 255;
+		outImg.data[j+1] = 0;
+		outImg.data[j+2] = 0;
+		outImg.data[j+3] = 255;
+		
+		i += 4;
+		j += 4;
+	}
+	
+	var i = (yInit*w+xInit)*4;
+	var j = (yInit*w+xEnd)*4;
+	for(var y = yInit; y <= yEnd; y++){
+		outImg.data[i] = 255;
+		outImg.data[i+1] = 0;
+		outImg.data[i+2] = 255;
+		outImg.data[i+3] = 255;
+		
+		outImg.data[j] = 0;
+		outImg.data[j+1] = 0;
+		outImg.data[j+2] = 255;
+		outImg.data[j+3] = 255;
+		
+		i += w*4;
+		j += w*4;
+	}
+	
+	ctx.putImageData(outImg, 0, 0);
+}
+
+function InputText(){
+	exponent.re = Number(document.getElementById("in").value);
+	draw();
+	//document.getElementById("sIn").value = n;
+}
+
+function InputImag(){
+	exponent.im = Number(document.getElementById("inIm").value);
+	draw();
+}
+
+/*function Increment(dx){
+	var n = Number(document.getElementById('in').value) + dx;
+	var m = Math.round(n*100)/100;
+	document.getElementById('in').value = m;
+	document.getElementById("sIn").value = m;
+	draw(m);
+}
+
+function Slide(){
+	var n = document.getElementById("sIn").value;
+	var m = Math.round(n*100)/100;
+	document.getElementById('in').value = m;
+	document.getElementById("sIn").value = m;
+	draw(m);
+}*/
+
+function canMouse(e){
+	if (dragging) {
+		if(!e) e = window.event;
+		updateBox2(e)
+		UpDate();
+	}
+}
+
+function canMouseDown(e){
+	if(!e) e = window.event;
+	dragging = true;
+	var rect = can.getBoundingClientRect();
+	box.x1 = Math.floor(e.clientX - rect.left);
+	box.y1 = Math.floor(e.clientY - rect.top);
+	box.x2 = box.x1;
+	box.y2 = box.y1;
+	UpDate();
+}
+
+function canMouseUp(e){
+	if (!dragging) return;
+	
+	if(!e) e = window.event;
+	dragging = false;
+	updateBox2(e)
+	
+	var X = box.x1;
+	var XX = box.x2;
+	var Y = box.y1;
+	var YY = box.y2;
+	
+	var xbool = X < XX;
+	var ybool = Y < YY;
+	
+	box.x2 = xbool ? XX : X;
+	box.x1 = xbool ? X : XX;
+	box.y2 = ybool ? YY : Y;
+	box.y1 = ybool ? Y : YY;
+	
+	var xConst = (dim.r-dim.l)/w;
+	var yConst = ((dim.b-dim.t)/h);
+	dim.r = (xConst*box.x2)+dim.l;
+	dim.l = (xConst*box.x1)+dim.l;
+	dim.b = (yConst*box.y2)+dim.t;
+	dim.t = (yConst*box.y1)+dim.t;
+	
+	draw({re:(Math.round(Number(document.getElementById('in').value)*100)/100),
+		im:(Number(document.getElementById("inIm").value))});
+}
+
+function updateBox2(e){
+	var rect = can.getBoundingClientRect();
+	box.x2 = Math.floor(e.clientX - rect.left);
+	var hight = Math.ceil(((box.x2-box.x1)*(h/w)));
+	var bA = Math.floor(e.clientY - rect.top) > box.y1;
+	var bB = box.x1 < box.x2;
+	var con = (!(bA || bB)) || (bA && bB);
+	box.y2 = con ?  hight+box.y1 : box.y1-hight;
+	if(box.y2 < 0){
+		box.y2 = 0;
+		var next = box.y1*(w/h)+box.x1;
+		box.x2 = con ? next : -next;
+	}
+}
+
+function SetIterations(){
+	M = Number(document.getElementById("numItInput").value);
+	draw();
+}
+
+function SetBound(){
+	bSq = Number(document.getElementById("numBSqInput").value);
+	draw();
+}
+
+function SetParam1(){
+	p1 = Number(document.getElementById("param1").value);
+	draw();
+}
+
+function setDim(L, R, B, T){
+	dim = { l:L, r:R, b:B, t:T };
+	draw();
+}
+
+function Move(d){//d=0=up; d=1=left; d=2=right; d=3=down
+	var dy = d==0 ? -1 : d==3 ? 1 : 0;
+	var dx = d==1 ? 1 : d==2 ? -1 : 0;
+	
+	dy = dy*(dim.t-dim.b)*0.3;
+	dx = dx*(dim.r-dim.l)*0.3;
+	
+	dim.t += dy;
+	dim.b += dy;
+	dim.r += dx;
+	dim.l += dx;
+	
+	draw();
+}
+
+
+var progCan, ctxProg, imgProg, progW, progH;
+function initProgCan(){
+	progCan = document.getElementById("progCan");
+	ctxProg = progCan.getContext("2d");
+	progW = progCan.width, progH = progCan.height;
+	imgProg = ctxProg.createImageData(w, h);
+	imgProg = ctxProg.createImageData(w, h);
+}
+
+function setProgressBar(persentages){
+	var numSmall = persentages.length - 1;
+	var hSmall = Math.floor((progH/2)/numSmall);
+	//var hBig = progH-(numSmall*hSmall);
+	
+	var rb, gb, bb, rf, gf, bf;
+	for(var y=0; y<=progH; y++){
+		var line = Math.floor(y/hSmall);
+		line = line>=numSmall ? 0 : line+1;
+		if(line == 0){
+			rb = 0; gb = 0; bb = 255;
+			rf = 255; gf = 0; bf = 255;
+		}else if(line%2==0){
+			rb = 255; gb = 0; bb = 0;
+			rf = 255; gf = 255; bf = 0;
+		}else{
+			rb = 0; gb = 255; bb = 0;
+			rf = 0; gf = 255; bf = 255;
+		}
+		var X = progW*persentages[line];
+		for(var x=0; x<=progW; x++){
+			var i = (y*w+x)*4;
+			if(x < X){
+				imgProg.data[i] = rb;
+				imgProg.data[i+1] = gb;
+				imgProg.data[i+2] = bb;
+				imgProg.data[i+3] = 255;
+			}else{
+				imgProg.data[i] = rf;
+				imgProg.data[i+1] = gf;
+				imgProg.data[i+2] = bf;
+				imgProg.data[i+3] = 255;
+			}
+		}
+	}
+	ctxProg.putImageData(imgProg, 0, 0);
+}
+
+/*for(var x = 0; x <= w; x++){
+var X = ((dim.r-dim.l)/w)*x+dim.l;
+var Y_1 = Math.sqrt(1+X*X)
+var Y_2 = -Y_1;
+var y1 = Math.floor((h/(dim.t-dim.b))*(Y_1-dim.b));
+var y2 = Math.ceil((h/(dim.t-dim.b))*(Y_2-dim.b));
+var i1 = (y1*w+x)*4;
+var i2 = (y2*w+x)*4;
+
+img.data[i1] = 255;
+img.data[i1+1] = 0;
+img.data[i1+2] = 0;
+img.data[i1+3] = 255;
+
+img.data[i2] = 255;
+img.data[i2+1] = 0;
+img.data[i2+2] = 0;
+img.data[i2+3] = 255;
+}
+
+for(var y = 0; y <= h; y++){
+var Y = ((dim.r-dim.l)/w)*y+dim.l;
+var Ynew = Y+2.5;
+var X_1 = Math.sqrt(0.01+(Ynew*Ynew))+0.2;
+var X_2 = -X_1-0.4;
+var x1 = Math.floor((w/(dim.r-dim.l))*(X_1-dim.l));
+var x2 = Math.ceil((w/(dim.r-dim.l))*(X_2-dim.l));
+var i1 = (y*w+x1)*4;
+var i2 = (y*w+x2)*4;
+
+img.data[i1] = 255;
+img.data[i1+1] = 0;
+img.data[i1+2] = 0;
+img.data[i1+3] = 255;
+
+img.data[i2] = 255;
+img.data[i2+1] = 0;
+img.data[i2+2] = 0;
+img.data[i2+3] = 255;
+}*/
+
+</script>
+
+</head>
+
+<body onload="Load();">
+	<table>
+	<tr>
+		<td></td>
+		<td>
+			
+			<table style="margin-left: auto; margin-right: auto;">
+			<!--<input type="range" min="-3.0" max="12.0" defaultValue="2" onchange="Slide();" id="sIn" step="0.1" />-->
+			<tr>
+				<th><label>Real part of c = </label></th>
+				<td><input type="text" value="2" id="in" onchange="InputText();" /></td>
+			</tr>
+			<!--<input type="button" value="+" onclick="Increment(0.1);"/>
+			<input type="button" value="-" onclick="Increment(-0.1);"/>-->
+			<tr>
+				<th><label>Imaginary part of c = </label></th>
+				<td><input type="text" value="0" id="inIm" onchange="InputImag();"></td>
+			</tr>
+			<tr>
+				<th><label>Number of Iterations (M) = </label></th>
+				<td><input type="text" id="numItInput" onchange="SetIterations();" value="20"/></td>
+			</tr>
+			<tr>
+				<th><label>Square of upper bound (bSq) = </label></th>
+				<td><input type="text" id="numBSqInput" onchange="SetBound();" value="5"/></td>
+			</tr>
+			<tr>
+				<th><label>Parameter (p1) = </label></th>
+				<td><input type="text" id="param1" onchange="SetParam1();" value="0.5"/></td>
+			</tr>
+			<tr>
+				<th><label>Zoom Out</label></th>
+				<td><input type="button" id="zoomOut1" onclick="setDim( -10.0, 10.0, -10.0, 10.0 );" value="Zoom"/></td>
+			</tr>
+			</table>
+			
+		</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<table style="margin-left: auto; margin-right: auto;">
+			<tr>
+				<th>Time used for last Calculation</th>
+				<td><span id="timeOutput" style="text-align: center;"></span></td>
+			</tr>
+			</table>
+		</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<canvas width="640" height="100" id="progCan">
+				Canvas is not supported
+			</canvas>
+		</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td></td>
+		<td><input type="button" id="upButton" onclick="Move(0);" value="^"/></td>
+		<td></td>
+	</tr>
+	<tr>
+		<td><input type="button" id="leftButton" onclick="Move(1);" value="<"/></td>
+		<td><canvas width="640" height="480" id="can" onmousemove="canMouse();" onmousedown="canMouseDown();" onmouseup="canMouseUp();">
+			Canvas is not supported
+		</canvas></td>
+		<td><input type="button" id="rightButton" onclick="Move(2);" value=">"/></td>
+	</tr>
+	<tr>
+		<td></td>
+		<td><input type="button" id="downButton" onclick="Move(3);" value="v"/></td>
+		<td></td>
+	</tr>
+	</table>
+</body>
+
+</html>
